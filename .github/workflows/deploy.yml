@@ -1,9 +1,14 @@
-name: Deploy Website to S3
+name: Deploy Website to S3 and CloudFront
 
 on:
   push:
     branches:
       - main
+
+# הרשאות חובה לעבודה עם IAM Role (OIDC) בלי מפתחות
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
   deploy:
@@ -13,12 +18,29 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v3
 
-    - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v2
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: us-east-1 
+    # הדפסות שהמרצה דרש לראות בלוגים
+    - name: Debug - Start Deployment
+      run: echo "Starting secure deployment process..."
 
-    - name: Deploy to Amazon S3
-      run: aws s3 sync ./ s3://maoz-github-actions-website-1234 --delete --exclude ".git/*" --exclude ".github/*"
+    # התחברות מאובטחת עם IAM Role בדיוק לפי דרישת המרצה
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v3
+      with:
+        role-to-assume: arn:aws:iam::628270103303:role/GitHubActions-WebDeployRole
+        aws-region: eu-north-1
+
+    - name: Debug - Authentication
+      run: echo "Successfully authenticated with AWS using IAM Role."
+
+    # העלאת הקבצים ל-S3
+    - name: Deploy to S3
+      run: |
+        echo "Syncing files to S3 bucket: maoz-github-actions-website-1234"
+        aws s3 sync ./ s3://maoz-github-actions-website-1234 --delete --exclude ".git/*" --exclude ".github/*"
+
+    # ביצוע Invalidation ל-CloudFront (רענון קאש)
+    - name: CloudFront Invalidation
+      run: |
+        echo "Creating CloudFront invalidation for distribution ENGB5VP4HWVO2..."
+        aws cloudfront create-invalidation --distribution-id ENGB5VP4HWVO2 --paths "/*"
+        echo "Deployment and invalidation completed successfully!"
